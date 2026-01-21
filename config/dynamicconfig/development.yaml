@@ -1,0 +1,4 @@
+# Minimal development config for Temporal
+limit.maxConcurrentActivityTaskExecutionsPerWorker:
+  - value: 1000
+    constraints: {}
