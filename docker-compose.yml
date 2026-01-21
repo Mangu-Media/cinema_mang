@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cse
+      POSTGRES_PASSWORD: cse
+      POSTGRES_DB: cse
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cse -d cse"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  localstack:
+    image: localstack/localstack:3.5
+    environment:
+      SERVICES: s3
+      DEFAULT_REGION: us-east-1
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack_data:/var/lib/localstack
+
+  temporal:
+    image: temporalio/auto-setup:1.24
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: cse
+      POSTGRES_PWD: cse
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development.yaml
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "7233:7233"
+
+  temporal-ui:
+    image: temporalio/ui:2.28.0
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:5173,http://localhost:8000
+    depends_on:
+      - temporal
+    ports:
+      - "8080:8080"
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    environment:
+      CSE_DATABASE_URL: postgresql+psycopg://cse:cse@postgres:5432/cse
+      CSE_S3_ENDPOINT_URL: http://localstack:4566
+      CSE_S3_REGION: us-east-1
+      CSE_S3_BUCKET: cse-artifacts
+      CSE_TEMPORAL_ADDRESS: temporal:7233
+      CSE_TEMPORAL_TASK_QUEUE: cse-orchestrator
+      CSE_LOCAL_DEV_ASSUME_S3: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      localstack:
+        condition: service_started
+    ports:
+      - "8000:8000"
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      CSE_DATABASE_URL: postgresql+psycopg://cse:cse@postgres:5432/cse
+      CSE_S3_ENDPOINT_URL: http://localstack:4566
+      CSE_S3_REGION: us-east-1
+      CSE_S3_BUCKET: cse-artifacts
+      CSE_TEMPORAL_ADDRESS: temporal:7233
+      CSE_TEMPORAL_TASK_QUEUE: cse-orchestrator
+      CSE_LOCAL_DEV_ASSUME_S3: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      localstack:
+        condition: service_started
+
+  web:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./web:/app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE=http://localhost:8000
+
+volumes:
+  localstack_data:
