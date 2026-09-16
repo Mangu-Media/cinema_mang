@@ -14,7 +14,8 @@ from cse_orchestrator.db.repo import (
     create_job_if_absent,
     get_job,
     list_events,
-    update_artifact
+    list_jobs,
+    update_artifact,
 )
 from cse_orchestrator.schemas.contracts import (
     ArtifactLinkResponse,
@@ -30,8 +31,28 @@ from cse_orchestrator.worker.workflow import ScriptToScreenInput, ScriptToScreen
 router = APIRouter(tags=["jobs"])
 log = logging.getLogger(__name__)
 
+
 async def _temporal_client() -> Client:
     return await Client.connect(settings.temporal_address)
+
+
+def _status_payload(job) -> JobStatusResponse:
+    artifacts = {k: v for k, v in (job.artifacts or {}).items() if k in {m.value for m in ArtifactName}}
+    return JobStatusResponse(
+        job_id=job.job_id,
+        status=job.status,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        error_message=job.error_message,
+        artifacts=artifacts,
+        parameters=job.parameters or {},
+    )
+
+
+@router.get("/jobs", response_model=list[JobStatusResponse])
+def list_all_jobs(db: Session = Depends(get_db)) -> list[JobStatusResponse]:
+    return [_status_payload(j) for j in list_jobs(db)]
+
 
 @router.post("/jobs", response_model=JobCreateResponse)
 async def submit_job(
@@ -58,34 +79,26 @@ async def submit_job(
     jid = job_id or new_job_id()
     job = create_job_if_absent(db, jid, parameters=parameters)
 
-    # Idempotency: if job exists and already queued/running/succeeded/failed, return current state.
     if job.status.value != "PENDING":
         return JobCreateResponse(job_id=jid, status=job.status)
 
     content_bytes: bytes
-    content_type: str
     script_text_payload: str | None = None
     if file:
         content_bytes = await file.read()
-        content_type = file.content_type or "application/octet-stream"
         decoded = content_bytes.decode("utf-8", errors="ignore")
         script_text_payload = decoded if decoded.strip() else None
     else:
         content_bytes = (script_text or "").encode("utf-8")
-        content_type = "text/plain"
         script_text_payload = script_text
 
     append_event(db, jid, "JOB_QUEUED", "Job queued for processing", {"has_file": bool(file)})
 
-    # Write raw artifact early (so it exists even if workflow fails later).
     raw_key = artifact_key(jid, ArtifactName.RAW_SCRIPT)
-
     put_bytes(artifact_location(jid, ArtifactName.RAW_SCRIPT), content_bytes, content_type="text/plain")
-
     update_artifact(db, jid, ArtifactName.RAW_SCRIPT.value, raw_key)
     append_event(db, jid, "ARTIFACT_WRITTEN", "Raw script stored", {"artifact": ArtifactName.RAW_SCRIPT.value})
 
-    # Start Temporal workflow (idempotent per workflow_id)
     try:
         client = await _temporal_client()
         await client.start_workflow(
@@ -99,34 +112,18 @@ async def submit_job(
             task_queue=settings.temporal_task_queue,
         )
     except Exception as e:
-        log.error(f"Failed to start workflow: {e}")
-        # In a real app we might want to mark job as failed here or handle connection errors
-        # but for now we proceed since we are in a scaffold.
-        pass
+        log.error("Failed to start workflow: %s", e)
 
     return JobCreateResponse(job_id=jid, status=job.status)
+
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
 def get_job_status(job_id: str, db: Session = Depends(get_db)) -> JobStatusResponse:
     job = get_job(db, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    return _status_payload(job)
 
-    # Filter only known artifacts
-    artifacts = {
-        ArtifactName(k): v
-        for k, v in (job.artifacts or {}).items()
-        if k in [m.value for m in ArtifactName]
-    }
-
-    return JobStatusResponse(
-        job_id=job.job_id,
-        status=job.status,
-        created_at=job.created_at,
-        updated_at=job.updated_at,
-        error_message=job.error_message,
-        artifacts=artifacts,
-    )
 
 @router.get("/jobs/{job_id}/events")
 def get_job_events(job_id: str, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
@@ -145,6 +142,7 @@ def get_job_events(job_id: str, db: Session = Depends(get_db)) -> list[dict[str,
         }
         for e in events
     ]
+
 
 @router.get("/jobs/{job_id}/artifacts/{artifact}", response_model=ArtifactLinkResponse)
 def get_artifact_link(job_id: str, artifact: ArtifactName, db: Session = Depends(get_db)) -> ArtifactLinkResponse:

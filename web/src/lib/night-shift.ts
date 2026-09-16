@@ -1,0 +1,42 @@
+export const NIGHT_SHIFT = {
+  job_id: "job_night_shift",
+  title: "Night Shift",
+  logline: "A desk sergeant and a rookie hold a precinct through one unremarkable night.",
+  frames: [
+    {
+      scene_index: 1,
+      heading: "INT. PRECINCT DESK — NIGHT",
+      int_ext: "INT.",
+      time_of_day: "NIGHT",
+      beats: ["The clock jumps a minute.", "HALE does not look up.", "A radiator ticks."],
+      entities: { characters: ["HALE", "ROOKIE"], locations: ["precinct"], props: ["radio"] },
+      raw_excerpt: "INT. PRECINCT DESK — NIGHT\nHALE keeps the book. The radio breathes static.",
+    },
+    {
+      scene_index: 2,
+      heading: "INT. HOLDING — NIGHT",
+      int_ext: "INT.",
+      time_of_day: "NIGHT",
+      beats: ["A bench. One man asleep sitting up.", "ROOKIE checks the door twice."],
+      entities: { characters: ["ROOKIE"], locations: ["precinct"], props: [] },
+      raw_excerpt: "INT. HOLDING — NIGHT\nThe lock is already locked.",
+    },
+    {
+      scene_index: 3,
+      heading: "EXT. PRECINCT STEPS — NIGHT",
+      int_ext: "EXT.",
+      time_of_day: "NIGHT",
+      beats: ["Sodium light. Rain that already happened.", "HALE smokes without performing it."],
+      entities: { characters: ["HALE"], locations: ["street"], props: [] },
+      raw_excerpt: "EXT. PRECINCT STEPS — NIGHT\nNo cars. The city is a rumor.",
+    },
+  ],
+  shots: [
+    { shot_index: 1, shot_type: "WIDE", duration_s: 5, description: "Desk from the bullpen. Clock in frame.", scene_index: 1 },
+    { shot_index: 2, shot_type: "MEDIUM", duration_s: 4, description: "HALE and the book.", scene_index: 1 },
+    { shot_index: 3, shot_type: "CLOSE_UP", duration_s: 3.5, description: "Radio grill.", scene_index: 1 },
+    { shot_index: 4, shot_type: "WIDE", duration_s: 5, description: "Holding bench.", scene_index: 2 },
+    { shot_index: 5, shot_type: "MEDIUM", duration_s: 4, description: "Rookie at the door.", scene_index: 2 },
+    { shot_index: 6, shot_type: "WIDE", duration_s: 6, description: "Steps. Rain memory.", scene_index: 3 },
+  ],
+};
