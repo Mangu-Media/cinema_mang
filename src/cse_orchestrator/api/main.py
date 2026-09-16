@@ -15,20 +15,25 @@ from cse_orchestrator.utils.settings import settings
 
 log = logging.getLogger(__name__)
 
+
 def create_app() -> FastAPI:
     setup_logging()
 
-    app = FastAPI(title="CSE Orchestrator", version="0.1.0")
+    app = FastAPI(title="CINEMA — Script to Screen", version="1.1.0")
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Adjust for production
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     app.include_router(jobs_router, prefix="/v1")
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"ok": "true", "product": "CINEMA"}
 
     @app.on_event("startup")
     async def _startup() -> None:
@@ -38,10 +43,13 @@ def create_app() -> FastAPI:
 
     return app
 
+
 app = create_app()
+
 
 def main() -> None:
     uvicorn.run("cse_orchestrator.api.main:app", host="0.0.0.0", port=8000, reload=False)
+
 
 if __name__ == "__main__":
     main()
